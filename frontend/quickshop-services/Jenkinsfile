@@ -2,40 +2,58 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "bharathi136/quickshop"
+        DOCKER_HUB_CREDENTIALS = 'dockerhub-creds' // Replace with your Jenkins Docker Hub credential ID
+        GITHUB_CREDENTIALS = 'github-creds'        // Replace with your GitHub credential ID
+        DOCKER_USER = 'bharathi136'
+        REPO = 'quickshop'
     }
 
     stages {
-        stage('Checkout Code') {
+        stage('Checkout SCM') {
             steps {
-                checkout scm
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: '*/main']],
+                    doGenerateSubmoduleConfigurations: false,
+                    extensions: [],
+                    userRemoteConfigs: [[
+                        url: 'https://github.com/Bharathi1306/quickshop.git',
+                        credentialsId: "${GITHUB_CREDENTIALS}"
+                    ]]
+                ])
             }
         }
 
         stage('Set Version Tag') {
             steps {
                 script {
-                    // Use short git commit hash as tag
-                    GIT_COMMIT_HASH = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    env.IMAGE_TAG = "${DOCKER_IMAGE}:${GIT_COMMIT_HASH}"
-                    echo "Docker image tag will be: ${env.IMAGE_TAG}"
+                    def GIT_COMMIT_HASH = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    env.GIT_COMMIT_HASH = GIT_COMMIT_HASH
+                    echo "Docker image tag will be: ${DOCKER_USER}/quickshop:${GIT_COMMIT_HASH}"
                 }
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build Docker Images') {
             steps {
-                sh "docker build -t ${env.IMAGE_TAG} ."
+                script {
+                    sh "docker build -t ${DOCKER_USER}/user-service:${GIT_COMMIT_HASH} ./frontend/quickshop-services/user-service/user-service"
+                    sh "docker build -t ${DOCKER_USER}/order-service:${GIT_COMMIT_HASH} ./frontend/quickshop-services/order-service"
+                    sh "docker build -t ${DOCKER_USER}/product-service:${GIT_COMMIT_HASH} ./frontend/quickshop-services/product-service"
+                }
             }
         }
 
         stage('Login & Push to Docker Hub') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', 
-                                                 usernameVariable: 'DOCKERHUB_USERNAME', 
-                                                 passwordVariable: 'DOCKERHUB_PASSWORD')]) {
-                    sh 'echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin'
-                    sh "docker push ${env.IMAGE_TAG}"
+                script {
+                    withCredentials([usernamePassword(credentialsId: "${DOCKER_HUB_CREDENTIALS}", passwordVariable: 'DOCKER_PASS', usernameVariable: 'DOCKER_USER_ENV')]) {
+                        sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER_ENV --password-stdin'
+                        sh "docker push ${DOCKER_USER}/user-service:${GIT_COMMIT_HASH}"
+                        sh "docker push ${DOCKER_USER}/order-service:${GIT_COMMIT_HASH}"
+                        sh "docker push ${DOCKER_USER}/product-service:${GIT_COMMIT_HASH}"
+                        sh 'docker logout'
+                    }
                 }
             }
         }
@@ -43,14 +61,10 @@ pipeline {
 
     post {
         success {
-            echo "🎉 Docker image ${env.IMAGE_TAG} built and pushed successfully!"
+            echo "✅ Pipeline completed successfully!"
         }
         failure {
             echo "⚠️ Pipeline failed! Check the logs for errors."
-        }
-        always {
-            // optional: logout from Docker Hub
-            sh 'docker logout || true'
         }
     }
 }
