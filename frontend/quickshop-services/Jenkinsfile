@@ -2,59 +2,55 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_USERNAME = "bharathi136"
-        DOCKERHUB_PASSWORD = credentials('dockerhub-password') // Add in Jenkins credentials
-        PROJECT_NAME = "quickshop"
+        DOCKER_IMAGE = "bharathi136/quickshop"
     }
 
     stages {
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
-                echo "Cloning repository..."
-                git url: 'https://github.com/Bharathi1306/quickshop.git', branch: 'main'
+                checkout scm
             }
         }
 
-        stage('Build Docker Images') {
+        stage('Set Version Tag') {
             steps {
-                echo "Building Docker images..."
-                sh "docker build -t ${DOCKERHUB_USERNAME}/order-service frontend/quickshop-services/order-service/"
-                sh "docker build -t ${DOCKERHUB_USERNAME}/product-service frontend/quickshop-services/product-service/"
-                sh "docker build -t ${DOCKERHUB_USERNAME}/user-service frontend/quickshop-services/user-service/"
+                script {
+                    // Use short git commit hash as tag
+                    GIT_COMMIT_HASH = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    env.IMAGE_TAG = "${DOCKER_IMAGE}:${GIT_COMMIT_HASH}"
+                    echo "Docker image tag will be: ${env.IMAGE_TAG}"
+                }
             }
         }
 
-        stage('Push Docker Images') {
+        stage('Build Docker Image') {
             steps {
-                echo "Logging into Docker Hub..."
-                sh "echo ${DOCKERHUB_PASSWORD} | docker login -u ${DOCKERHUB_USERNAME} --password-stdin"
-
-                echo "Pushing images..."
-                sh "docker push ${DOCKERHUB_USERNAME}/order-service"
-                sh "docker push ${DOCKERHUB_USERNAME}/product-service"
-                sh "docker push ${DOCKERHUB_USERNAME}/user-service"
+                sh "docker build -t ${env.IMAGE_TAG} ."
             }
         }
 
-        stage('Cleanup') {
+        stage('Login & Push to Docker Hub') {
             steps {
-                echo "Removing local Docker images..."
-                sh "docker rmi ${DOCKERHUB_USERNAME}/order-service || true"
-                sh "docker rmi ${DOCKERHUB_USERNAME}/product-service || true"
-                sh "docker rmi ${DOCKERHUB_USERNAME}/user-service || true"
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', 
+                                                 usernameVariable: 'DOCKERHUB_USERNAME', 
+                                                 passwordVariable: 'DOCKERHUB_PASSWORD')]) {
+                    sh 'echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin'
+                    sh "docker push ${env.IMAGE_TAG}"
+                }
             }
         }
     }
 
     post {
-        always {
-            echo "Pipeline finished!"
-        }
         success {
-            echo "All stages completed successfully."
+            echo "🎉 Docker image ${env.IMAGE_TAG} built and pushed successfully!"
         }
         failure {
-            echo "Pipeline failed! Check the logs."
+            echo "⚠️ Pipeline failed! Check the logs for errors."
+        }
+        always {
+            // optional: logout from Docker Hub
+            sh 'docker logout || true'
         }
     }
 }
