@@ -1,36 +1,68 @@
 pipeline {
     agent any
+
+    environment {
+        DOCKER_HUB_CRED = 'docker-hub-id' // Replace with your Jenkins Docker Hub credentials ID
+        DOCKER_NAMESPACE = 'bharathi136'   // Your Docker Hub username
+    }
+
     stages {
         stage('Build Order Service') {
             steps {
                 dir('frontend/quickshop-services/order-service') {
+                    echo '⚙️ Building Order Service with Maven...'
                     sh 'mvn clean package -DskipTests'
                 }
             }
         }
+
         stage('Build Product Service') {
             steps {
                 dir('frontend/quickshop-services/product-service') {
+                    echo '⚙️ Building Product Service with Maven...'
                     sh 'mvn clean package -DskipTests'
                 }
             }
         }
+
         stage('Build User Service') {
             steps {
                 dir('frontend/quickshop-services/user-service') {
+                    echo '⚙️ Building User Service with Maven...'
                     sh 'mvn clean package -DskipTests'
                 }
             }
         }
+
         stage('Build Docker Images') {
             steps {
-                // Build Docker images for each service here
+                dir('frontend/quickshop-services') {
+                    echo '🐳 Building Docker images...'
+                    sh "docker build -t ${DOCKER_NAMESPACE}/order-service order-service/"
+                    sh "docker build -t ${DOCKER_NAMESPACE}/product-service product-service/"
+                    sh "docker build -t ${DOCKER_NAMESPACE}/user-service user-service/"
+                }
             }
         }
+
         stage('Push Docker Images') {
             steps {
-                // Push Docker images to Docker Hub
+                echo '🚀 Pushing Docker images to Docker Hub...'
+                withDockerRegistry([credentialsId: "${DOCKER_HUB_CRED}", url: '']) {
+                    sh "docker push ${DOCKER_NAMESPACE}/order-service"
+                    sh "docker push ${DOCKER_NAMESPACE}/product-service"
+                    sh "docker push ${DOCKER_NAMESPACE}/user-service"
+                }
             }
+        }
+    }
+
+    post {
+        success {
+            echo '✅ Pipeline completed successfully!'
+        }
+        failure {
+            echo '❌ Pipeline failed. Check logs for errors.'
         }
     }
 }
