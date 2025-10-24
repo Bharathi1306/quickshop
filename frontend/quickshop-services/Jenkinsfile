@@ -2,49 +2,28 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_CREDENTIALS = 'dockerhub-creds' // Replace with your Jenkins Docker Hub credentials ID
-        DOCKERHUB_USERNAME = 'bharathi136'
+        DOCKERHUB_USERNAME = "bharathi136"
+        DOCKERHUB_PASSWORD = credentials('dockerhub-password') // Make sure you add this in Jenkins credentials
+        PROJECT_NAME = "quickshop"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git credentialsId: 'github-creds', url: 'https://github.com/Bharathi1306/quickshop.git'
-            }
-        }
-
-        stage('Build Services') {
-            parallel {
-                stage('Order Service') {
-                    steps {
-                        dir('frontend/quickshop-services/order-service') {
-                            echo "⚙️ Building Order Service with Maven..."
-                            sh 'mvn clean package -DskipTests'
-                        }
-                    }
-                }
-                stage('Product Service') {
-                    steps {
-                        dir('frontend/quickshop-services/product-service') {
-                            echo "⚙️ Building Product Service with Maven..."
-                            sh 'mvn clean package -DskipTests'
-                        }
-                    }
-                }
-                stage('User Service') {
-                    steps {
-                        dir('frontend/quickshop-services/user-service') {
-                            echo "⚙️ Building User Service with Maven..."
-                            sh 'mvn clean package -DskipTests'
-                        }
-                    }
-                }
+                echo "Cloning repository..."
+                git url: 'https://github.com/Bharathi1306/quickshop.git', branch: 'main'
             }
         }
 
         stage('Build Docker Images') {
             steps {
-                dir('frontend/quickshop-services') {
-                    echo "🐳 Building Docker images..."
-                    sh 'docker build -t ${DOCKERHUB_USERNAME}/order-service order-service/'
-                    sh 'docker build
+                echo "Building Docker images..."
+                sh "docker build -t ${DOCKERHUB_USERNAME}/order-service frontend/quickshop-services/order-service/"
+                sh "docker build -t ${DOCKERHUB_USERNAME}/product-service frontend/quickshop-services/product-service/"
+                sh "docker build -t ${DOCKERHUB_USERNAME}/user-service frontend/quickshop-services/user-service/"
+            }
+        }
+
+        stage('Push Docker Images') {
+            steps {
+                ech
